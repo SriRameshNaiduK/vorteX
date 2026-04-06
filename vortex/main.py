@@ -1,3 +1,4 @@
+import os
 import sys
 import asyncio
 import argparse
@@ -8,6 +9,7 @@ from vortex.utils import display_banner, setup_logging, VERSION, _count_lines
 from vortex.wordlists import (
     get_wordlist_for_size,
     _SECLISTS_FILES,
+    is_cached_wordlist,
 )
 
 
@@ -25,10 +27,16 @@ def _resolve_wordlist(module, size, explicit_wordlist):
     count = _count_lines(path)
 
     if from_seclists:
-        relative = _SECLISTS_FILES.get(module, {}).get(size, path)
-        print(
-            f"{Fore.CYAN}[*] Using SecLists ({size}): {relative} ({count} entries){Style.RESET_ALL}"
-        )
+        if is_cached_wordlist(path):
+            label = os.path.basename(path)
+            print(
+                f"{Fore.CYAN}[*] Using cached SecLists wordlist: {label} ({count} entries){Style.RESET_ALL}"
+            )
+        else:
+            relative = _SECLISTS_FILES.get(module, {}).get(size, path)
+            print(
+                f"{Fore.CYAN}[*] Using SecLists ({size}): {relative} ({count} entries){Style.RESET_ALL}"
+            )
     else:
         bundled_name = {
             'subdomains': 'subdomains.txt',

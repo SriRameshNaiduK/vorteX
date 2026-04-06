@@ -76,6 +76,58 @@ def test_seclists_provider_falls_back_to_search_paths(tmp_path):
             assert provider.base_path == str(tmp_path)
 
 
+def test_cache_seclists_wordlists_copies_available_files(tmp_path):
+    """cache_seclists_wordlists() should copy detected SecLists files into WORDLIST_DIR."""
+    import vortex.wordlists as wl_mod
+
+    source = tmp_path / 'SecLists'
+    sl_dns = source / 'Discovery' / 'DNS'
+    sl_dns.mkdir(parents=True)
+    sl_web = source / 'Discovery' / 'Web-Content'
+    sl_web.mkdir(parents=True)
+
+    (sl_dns / 'subdomains-top1million-5000.txt').write_text('sub1\nsub2\n')
+    (sl_web / 'common.txt').write_text('admin\n')
+    (sl_web / 'burp-parameter-names.txt').write_text('id\n')
+
+    cache_dir = tmp_path / 'cache'
+    cache_dir.mkdir()
+
+    with patch.object(wl_mod, 'WORDLIST_DIR', str(cache_dir)):
+        cached = wl_mod.cache_seclists_wordlists(source_base=str(source), overwrite=True)
+
+    assert cached['subdomains:small'] == os.path.join(str(cache_dir), 'seclists_subdomains_small.txt')
+    assert cached['directories:small'] == os.path.join(str(cache_dir), 'seclists_directories_small.txt')
+    assert cached['parameters:small'] == os.path.join(str(cache_dir), 'seclists_parameters_small.txt')
+    assert os.path.isfile(cached['subdomains:small'])
+    assert os.path.isfile(cached['directories:small'])
+    assert os.path.isfile(cached['parameters:small'])
+
+
+def test_get_wordlist_for_size_prefers_cached_wordlist(tmp_path):
+    """A cached SecLists copy should win over a live SecLists install."""
+    import vortex.wordlists as wl_mod
+
+    source = tmp_path / 'SecLists'
+    sl_dns = source / 'Discovery' / 'DNS'
+    sl_dns.mkdir(parents=True)
+    (sl_dns / 'subdomains-top1million-5000.txt').write_text('live\n')
+
+    cache_dir = tmp_path / 'cache'
+    cache_dir.mkdir()
+    cached_file = cache_dir / 'seclists_subdomains_small.txt'
+    cached_file.write_text('cached\n')
+
+    with patch.dict(os.environ, {'SECLISTS_PATH': str(source)}):
+        provider = wl_mod.SecListsProvider()
+        with patch.object(wl_mod, 'WORDLIST_DIR', str(cache_dir)):
+            with patch.object(wl_mod, '_provider', provider):
+                path, from_seclists = wl_mod.get_wordlist_for_size('subdomains', 'small')
+
+    assert from_seclists
+    assert path == str(cached_file)
+
+
 # ---------------------------------------------------------------------------
 # Test: get_wordlist_for_size() — fallback to bundled when SecLists absent
 # ---------------------------------------------------------------------------

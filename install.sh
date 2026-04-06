@@ -10,6 +10,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 VENV_DIR=".venv"
 MODE="${1:-}"
 
@@ -27,6 +30,19 @@ command_exists() {
 print_ok()  { echo "[✔] $*"; }
 print_info(){ echo "[*] $*"; }
 print_warn(){ echo "[!] $*"; }
+
+cache_seclists_wordlists() {
+    print_info "Checking for a local SecLists installation to cache..."
+    python3 - <<'PY'
+from vortex.wordlists import cache_seclists_wordlists
+
+cached = cache_seclists_wordlists(overwrite=True)
+if cached:
+    print(f"[✔] Cached {len(cached)} SecLists wordlists into vortex/wordlists/")
+else:
+    print("[!] No SecLists installation found; keeping the bundled fallback wordlists.")
+PY
+}
 
 # ── Check Python version ────────────────────────────────────────────
 
@@ -51,6 +67,7 @@ fi
 # ── Dev mode ────────────────────────────────────────────────────────
 
 if [ "$MODE" = "--dev" ]; then
+    cache_seclists_wordlists
     print_info "Dev mode: creating virtual environment at $VENV_DIR/ ..."
     python3 -m venv "$VENV_DIR"
     "$VENV_DIR/bin/pip" install --upgrade pip --quiet
@@ -67,6 +84,7 @@ fi
 # ── Standard install: try pipx first ────────────────────────────────
 
 if command_exists pipx; then
+    cache_seclists_wordlists
     print_info "pipx detected — using pipx for isolated install..."
     pipx install .
     print_ok "vorteX installed via pipx."
@@ -79,6 +97,7 @@ fi
 # ── Fallback: venv install ───────────────────────────────────────────
 
 print_info "pipx not found — creating virtual environment at $VENV_DIR/ ..."
+cache_seclists_wordlists
 python3 -m venv "$VENV_DIR"
 "$VENV_DIR/bin/pip" install --upgrade pip --quiet
 "$VENV_DIR/bin/pip" install . --quiet

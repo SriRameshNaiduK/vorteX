@@ -6,22 +6,35 @@ delegates to the richer ``vortex.wordlists`` implementation so that
 detection logic is kept in a single place.
 """
 
-from vortex.wordlists import SecListsProvider, _SECLISTS_FILES, get_wordlist_for_size
+import os
+
+from vortex.wordlists import (
+    SecListsProvider,
+    _SECLISTS_FILES,
+    get_cached_wordlist_path,
+    get_wordlist_for_size,
+)
 
 # Re-export the singleton provider for convenience
 _provider = SecListsProvider()
 
 
 def find_seclists():
-    """Return the SecLists base directory path, or ``None`` if not found.
+    """Return the cached or installed SecLists base directory path.
 
     Searches (in order):
-    1. The ``SECLISTS_PATH`` environment variable.
-    2. ``/usr/share/seclists/``
-    3. ``/usr/share/SecLists/``
-    4. ``/opt/seclists/``
-    5. ``~/SecLists/``
+    1. A cached copy inside ``vortex/wordlists``.
+    2. The ``SECLISTS_PATH`` environment variable.
+    3. ``/usr/share/seclists/``
+    4. ``/usr/share/SecLists/``
+    5. ``/opt/seclists/``
+    6. ``~/SecLists/``
     """
+    for module, sizes in _SECLISTS_FILES.items():
+        for size in sizes:
+            cached = get_cached_wordlist_path(module, size)
+            if cached:
+                return os.path.dirname(cached)
     return _provider.base_path
 
 
@@ -38,9 +51,12 @@ def get_seclists_wordlist(category, size="small"):
     Returns
     -------
     str or None
-        Absolute path to the wordlist file, or ``None`` when SecLists is
-        not installed or the specific file is missing.
+        Absolute path to the cached or installed wordlist file, or ``None``
+        when SecLists is not installed and no cached copy is available.
     """
+    cached = get_cached_wordlist_path(category, size)
+    if cached:
+        return cached
     return _provider.get_path(category, size)
 
 

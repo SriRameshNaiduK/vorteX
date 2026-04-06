@@ -1,6 +1,9 @@
 import os
+import shutil
 
 WORDLIST_DIR = os.path.dirname(os.path.abspath(__file__))
+
+_LOCAL_SECLISTS_PREFIX = 'seclists_'
 
 _BUNDLED_SUBDOMAINS = os.path.join(WORDLIST_DIR, 'subdomains.txt')
 _BUNDLED_DIRECTORIES = os.path.join(WORDLIST_DIR, 'directories.txt')
@@ -33,6 +36,73 @@ _SECLISTS_SEARCH_PATHS = [
     '/opt/seclists',
     os.path.expanduser('~/SecLists'),
 ]
+
+
+def _local_seclists_filename(module, size):
+    if module not in _SECLISTS_FILES:
+        return None
+    if size not in _SECLISTS_FILES[module]:
+        return None
+    return f"{_LOCAL_SECLISTS_PREFIX}{module}_{size}.txt"
+
+
+def get_cached_wordlist_path(module, size='small'):
+    """Return a cached SecLists copy stored inside ``WORDLIST_DIR`` if present."""
+    filename = _local_seclists_filename(module, size)
+    if not filename:
+        return None
+    path = os.path.join(WORDLIST_DIR, filename)
+    return path if os.path.isfile(path) else None
+
+
+def is_cached_wordlist(path):
+    """Return True when *path* points to a cached SecLists copy."""
+    if not path:
+        return False
+    abs_path = os.path.abspath(path)
+    return os.path.dirname(abs_path) == os.path.abspath(WORDLIST_DIR) and os.path.basename(abs_path).startswith(
+        _LOCAL_SECLISTS_PREFIX
+    )
+
+
+def cache_seclists_wordlists(source_base=None, overwrite=False):
+    """Copy available SecLists wordlists into ``WORDLIST_DIR``.
+
+    Parameters
+    ----------
+    source_base : str or None
+        Base path of a SecLists installation. When omitted, the detected
+        system installation is used.
+    overwrite : bool
+        Replace already-cached files when True.
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping of ``"module:size"`` to the cached file path for every file
+        that was copied or already present.
+    """
+    source_base = source_base or _provider.base_path
+    if not source_base or not os.path.isdir(source_base):
+        return {}
+
+    cached = {}
+    for module, sizes in _SECLISTS_FILES.items():
+        for size, relative in sizes.items():
+            source = os.path.join(source_base, relative)
+            if not os.path.isfile(source):
+                continue
+
+            filename = _local_seclists_filename(module, size)
+            if not filename:
+                continue
+
+            destination = os.path.join(WORDLIST_DIR, filename)
+            if overwrite or not os.path.isfile(destination):
+                shutil.copy2(source, destination)
+            cached[f'{module}:{size}'] = destination
+
+    return cached
 
 
 class SecListsProvider:
@@ -90,8 +160,8 @@ _provider = SecListsProvider()
 def get_wordlist_for_size(module, size='small'):
     """Return the best wordlist path for *module* at the requested *size*.
 
-    Tries SecLists first; falls back to the bundled wordlist when SecLists is
-    not available or the specific file is missing.
+    Tries a cached SecLists copy first, then a system SecLists install, then
+    falls back to the bundled wordlist when neither is available.
 
     Parameters
     ----------
@@ -104,8 +174,12 @@ def get_wordlist_for_size(module, size='small'):
     -------
     tuple[str, bool]
         ``(path, from_seclists)`` where *from_seclists* is True when the
-        returned path comes from a SecLists installation.
+        returned path comes from a cached or system SecLists source.
     """
+    cached_path = get_cached_wordlist_path(module, size)
+    if cached_path:
+        return cached_path, True
+
     seclists_path = _provider.get_path(module, size)
     if seclists_path:
         return seclists_path, True
