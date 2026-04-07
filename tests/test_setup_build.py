@@ -17,7 +17,7 @@ def test_build_py_stages_seclists_to_source_and_build_tree(tmp_path):
     cmd = setup_mod.build_py(dist)
     cmd.build_lib = str(tmp_path / 'build' / 'lib')
 
-    with patch('vortex.wordlists.install_full_seclists', side_effect=fake_install):
+    with patch.object(setup_mod, 'install_full_seclists', side_effect=fake_install):
         with patch.object(setup_mod._build_py, 'run', return_value=None):
             cmd.run()
 
