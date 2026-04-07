@@ -90,14 +90,17 @@ def is_cached_wordlist(path):
     )
 
 
-def cache_seclists_wordlists(source_base=None, overwrite=False, download_missing=False):
-    """Copy available SecLists wordlists into ``WORDLIST_DIR``.
+def cache_seclists_wordlists(source_base=None, destination_dir=None, overwrite=False, download_missing=False):
+    """Copy available SecLists wordlists into a destination directory.
 
     Parameters
     ----------
     source_base : str or None
         Base path of a SecLists installation. When omitted, the detected
         system installation is used.
+    destination_dir : str or None
+        Directory that should receive the cached files. Defaults to
+        ``WORDLIST_DIR``.
     overwrite : bool
         Replace already-cached files when True.
     download_missing : bool
@@ -111,6 +114,8 @@ def cache_seclists_wordlists(source_base=None, overwrite=False, download_missing
         that was copied or already present.
     """
     source_base = source_base or _provider.base_path
+    destination_dir = destination_dir or WORDLIST_DIR
+    os.makedirs(destination_dir, exist_ok=True)
     if not source_base or not os.path.isdir(source_base):
         if not download_missing:
             return {}
@@ -123,7 +128,7 @@ def cache_seclists_wordlists(source_base=None, overwrite=False, download_missing
             if not filename:
                 continue
 
-            destination = os.path.join(WORDLIST_DIR, filename)
+            destination = os.path.join(destination_dir, filename)
             if not overwrite and os.path.isfile(destination):
                 cached[f'{module}:{size}'] = destination
                 continue

@@ -104,6 +104,28 @@ def test_cache_seclists_wordlists_copies_available_files(tmp_path):
     assert os.path.isfile(cached['parameters:small'])
 
 
+def test_cache_seclists_wordlists_respects_destination_dir(tmp_path):
+    """cache_seclists_wordlists() should write to an explicit destination directory."""
+    import vortex.wordlists as wl_mod
+
+    source = tmp_path / 'SecLists'
+    sl_dns = source / 'Discovery' / 'DNS'
+    sl_dns.mkdir(parents=True)
+    (sl_dns / 'subdomains-top1million-5000.txt').write_text('sub1\n')
+
+    destination = tmp_path / 'installed' / 'wordlists'
+
+    cached = wl_mod.cache_seclists_wordlists(
+        source_base=str(source),
+        destination_dir=str(destination),
+        overwrite=True,
+    )
+
+    assert cached['subdomains:small'] == os.path.join(str(destination), 'seclists_subdomains_small.txt')
+    assert os.path.isfile(cached['subdomains:small'])
+    assert os.path.isdir(destination)
+
+
 def test_cache_seclists_wordlists_downloads_when_source_missing(tmp_path):
     """download_missing=True should populate cached files from upstream URLs."""
     import vortex.wordlists as wl_mod
