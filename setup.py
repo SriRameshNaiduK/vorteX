@@ -1,8 +1,6 @@
 import os
 import shutil
-import tempfile
 import urllib.request
-import zipfile
 
 from setuptools import setup, find_packages
 from setuptools.command.build_py import build_py as _build_py
@@ -31,47 +29,26 @@ def _detect_seclists_source(explicit_source=None):
     return None
 
 
-def _download_and_extract_seclists(destination_parent):
+def _download_seclists_archive(destination_parent):
     os.makedirs(destination_parent, exist_ok=True)
-    target_dir = os.path.join(destination_parent, 'SecLists')
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        archive_path = os.path.join(temp_dir, 'seclists.zip')
-        with urllib.request.urlopen(_SECLISTS_ARCHIVE_URL, timeout=30) as response:
-            content = response.read()
-        if not content:
-            return None
-
-        with open(archive_path, 'wb') as handle:
-            handle.write(content)
-
-        with zipfile.ZipFile(archive_path, 'r') as archive:
-            archive.extractall(temp_dir)
-
-        extracted_root = None
-        for name in os.listdir(temp_dir):
-            candidate = os.path.join(temp_dir, name)
-            if os.path.isdir(candidate) and name.lower().startswith('seclists-'):
-                extracted_root = candidate
-                break
-
-        if not extracted_root:
-            return None
-
-        if os.path.isdir(target_dir):
-            shutil.rmtree(target_dir, ignore_errors=True)
-        shutil.copytree(extracted_root, target_dir)
-
-    return target_dir
+    archive_path = os.path.join(destination_parent, 'SecLists-master.zip')
+    with urllib.request.urlopen(_SECLISTS_ARCHIVE_URL, timeout=30) as response:
+        content = response.read()
+    if not content:
+        return None
+    with open(archive_path, 'wb') as handle:
+        handle.write(content)
+    return archive_path if os.path.isfile(archive_path) else None
 
 
 def install_full_seclists(destination_parent, source_base=None, overwrite=False):
     destination_parent = os.path.abspath(destination_parent)
     target_dir = os.path.join(destination_parent, 'SecLists')
+    archive_path = os.path.join(destination_parent, 'SecLists-master.zip')
     os.makedirs(destination_parent, exist_ok=True)
 
-    if os.path.isdir(target_dir) and not overwrite:
-        return target_dir
+    if os.path.isfile(archive_path) and not overwrite:
+        return archive_path
 
     source_base = _detect_seclists_source(source_base)
     if source_base:
@@ -79,11 +56,15 @@ def install_full_seclists(destination_parent, source_base=None, overwrite=False)
         if source_base != os.path.abspath(target_dir):
             if os.path.isdir(target_dir):
                 shutil.rmtree(target_dir, ignore_errors=True)
-            shutil.copytree(source_base, target_dir)
+            try:
+                shutil.copytree(source_base, target_dir)
+                return target_dir
+            except OSError:
+                pass
+        if os.path.isdir(target_dir):
             return target_dir
-        return target_dir
 
-    return _download_and_extract_seclists(destination_parent)
+    return _download_seclists_archive(destination_parent)
 
 
 class build_py(_build_py):

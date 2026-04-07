@@ -14,8 +14,9 @@ def test_find_seclists_returns_none_when_absent():
             provider = SecListsProvider()
             with patch.object(sl_mod, "_provider", provider):
                 with patch("vortex.seclists.get_local_seclists_base", return_value=None):
-                    with patch("vortex.seclists.get_cached_wordlist_path", return_value=None):
-                        assert sl_mod.find_seclists() is None
+                    with patch("vortex.seclists.get_local_seclists_archive", return_value=None):
+                        with patch("vortex.seclists.get_cached_wordlist_path", return_value=None):
+                            assert sl_mod.find_seclists() is None
 
 
 def test_find_seclists_returns_path_when_present(tmp_path):
@@ -27,8 +28,9 @@ def test_find_seclists_returns_path_when_present(tmp_path):
         provider = SecListsProvider()
         with patch.object(sl_mod, "_provider", provider):
             with patch("vortex.seclists.get_local_seclists_base", return_value=None):
-                with patch("vortex.seclists.get_cached_wordlist_path", return_value=None):
-                    assert sl_mod.find_seclists() == str(tmp_path)
+                with patch("vortex.seclists.get_local_seclists_archive", return_value=None):
+                    with patch("vortex.seclists.get_cached_wordlist_path", return_value=None):
+                        assert sl_mod.find_seclists() == str(tmp_path)
 
 
 def test_find_seclists_prefers_cached_wordlists(tmp_path):
@@ -45,7 +47,8 @@ def test_find_seclists_prefers_cached_wordlists(tmp_path):
             provider = wl_mod.SecListsProvider()
             with patch.object(sl_mod, "_provider", provider):
                 with patch("vortex.seclists.get_local_seclists_base", return_value=None):
-                    assert sl_mod.find_seclists() == str(cache_dir)
+                    with patch("vortex.seclists.get_local_seclists_archive", return_value=None):
+                        assert sl_mod.find_seclists() == str(cache_dir)
 
 
 def test_get_seclists_wordlist_returns_none_when_absent():
@@ -58,8 +61,9 @@ def test_get_seclists_wordlist_returns_none_when_absent():
             provider = SecListsProvider()
             with patch.object(sl_mod, "_provider", provider):
                 with patch("vortex.seclists.get_local_seclists_base", return_value=None):
-                    with patch("vortex.seclists.get_cached_wordlist_path", return_value=None):
-                        assert sl_mod.get_seclists_wordlist("subdomains") is None
+                    with patch("vortex.seclists.get_local_seclists_archive", return_value=None):
+                        with patch("vortex.seclists.get_cached_wordlist_path", return_value=None):
+                            assert sl_mod.get_seclists_wordlist("subdomains") is None
 
 
 def test_get_seclists_wordlist_returns_cached_path(tmp_path):
@@ -100,11 +104,12 @@ def test_get_seclists_wordlist_returns_path_when_file_exists(tmp_path):
         provider = SecListsProvider()
         with patch.object(sl_mod, "_provider", provider):
             with patch("vortex.seclists.get_local_seclists_base", return_value=None):
-                with patch("vortex.seclists.get_cached_wordlist_path", return_value=None):
-                    path = sl_mod.get_seclists_wordlist("subdomains", "small")
-                    assert path is not None
-                    assert os.path.isfile(path)
-                    assert "subdomains-top1million-5000.txt" in path
+                with patch("vortex.seclists.get_local_seclists_archive", return_value=None):
+                    with patch("vortex.seclists.get_cached_wordlist_path", return_value=None):
+                        path = sl_mod.get_seclists_wordlist("subdomains", "small")
+                        assert path is not None
+                        assert os.path.isfile(path)
+                        assert "subdomains-top1million-5000.txt" in path
 
 
 def test_seclists_module_exports():

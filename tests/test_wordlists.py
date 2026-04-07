@@ -49,10 +49,11 @@ def test_seclists_provider_detects_env_var(tmp_path):
     import vortex.wordlists as wl_mod
 
     with patch.object(wl_mod, 'get_local_seclists_base', return_value=None):
-        with patch.dict(os.environ, {'SECLISTS_PATH': str(tmp_path)}):
-            provider = wl_mod.SecListsProvider()
-            assert provider.available
-            assert provider.base_path == str(tmp_path)
+        with patch.object(wl_mod, 'get_local_seclists_archive', return_value=None):
+            with patch.dict(os.environ, {'SECLISTS_PATH': str(tmp_path)}):
+                provider = wl_mod.SecListsProvider()
+                assert provider.available
+                assert provider.base_path == str(tmp_path)
 
 
 def test_seclists_provider_not_detected_when_absent():
@@ -60,11 +61,12 @@ def test_seclists_provider_not_detected_when_absent():
     import vortex.wordlists as wl_mod
 
     with patch.object(wl_mod, 'get_local_seclists_base', return_value=None):
-        with patch.dict(os.environ, {'SECLISTS_PATH': ''}, clear=False):
-            with patch('vortex.wordlists._SECLISTS_SEARCH_PATHS', ['/nonexistent/seclists']):
-                provider = wl_mod.SecListsProvider()
-                assert not provider.available
-                assert provider.base_path is None
+        with patch.object(wl_mod, 'get_local_seclists_archive', return_value=None):
+            with patch.dict(os.environ, {'SECLISTS_PATH': ''}, clear=False):
+                with patch('vortex.wordlists._SECLISTS_SEARCH_PATHS', ['/nonexistent/seclists']):
+                    provider = wl_mod.SecListsProvider()
+                    assert not provider.available
+                    assert provider.base_path is None
 
 
 def test_seclists_provider_falls_back_to_search_paths(tmp_path):
@@ -72,11 +74,12 @@ def test_seclists_provider_falls_back_to_search_paths(tmp_path):
     import vortex.wordlists as wl_mod
 
     with patch.object(wl_mod, 'get_local_seclists_base', return_value=None):
-        with patch.dict(os.environ, {'SECLISTS_PATH': ''}, clear=False):
-            with patch('vortex.wordlists._SECLISTS_SEARCH_PATHS', ['/nonexistent', str(tmp_path)]):
-                provider = wl_mod.SecListsProvider()
-                assert provider.available
-                assert provider.base_path == str(tmp_path)
+        with patch.object(wl_mod, 'get_local_seclists_archive', return_value=None):
+            with patch.dict(os.environ, {'SECLISTS_PATH': ''}, clear=False):
+                with patch('vortex.wordlists._SECLISTS_SEARCH_PATHS', ['/nonexistent', str(tmp_path)]):
+                    provider = wl_mod.SecListsProvider()
+                    assert provider.available
+                    assert provider.base_path == str(tmp_path)
 
 
 def test_install_full_seclists_copies_source_tree(tmp_path):
@@ -100,10 +103,10 @@ def test_install_full_seclists_downloads_archive_when_no_source(tmp_path):
     import vortex.wordlists as wl_mod
 
     dest_parent = tmp_path / 'wordlists'
-    expected = os.path.join(str(dest_parent), 'SecLists')
+    expected = os.path.join(str(dest_parent), 'SecLists-master.zip')
 
     with patch.object(wl_mod, '_provider', type('P', (), {'base_path': None})()):
-        with patch.object(wl_mod, '_download_and_extract_seclists', return_value=expected):
+        with patch.object(wl_mod, '_download_seclists_archive', return_value=expected):
             installed = wl_mod.install_full_seclists(destination_parent=str(dest_parent), overwrite=True)
 
     assert installed == expected
@@ -207,11 +210,13 @@ def test_get_wordlist_for_size_prefers_local_seclists_install(tmp_path):
     cached_file = cache_dir / 'seclists_subdomains_small.txt'
     cached_file.write_text('cached\n')
 
-    with patch.dict(os.environ, {'SECLISTS_PATH': str(source)}):
-        provider = wl_mod.SecListsProvider()
-        with patch.object(wl_mod, 'WORDLIST_DIR', str(cache_dir)):
-            with patch.object(wl_mod, '_provider', provider):
-                path, from_seclists = wl_mod.get_wordlist_for_size('subdomains', 'small')
+    with patch.object(wl_mod, 'get_local_seclists_base', return_value=None):
+        with patch.object(wl_mod, 'get_local_seclists_archive', return_value=None):
+            with patch.dict(os.environ, {'SECLISTS_PATH': str(source)}):
+                provider = wl_mod.SecListsProvider()
+                with patch.object(wl_mod, 'WORDLIST_DIR', str(cache_dir)):
+                    with patch.object(wl_mod, '_provider', provider):
+                        path, from_seclists = wl_mod.get_wordlist_for_size('subdomains', 'small')
 
     assert from_seclists
     assert 'subdomains-top1million-5000.txt' in path
@@ -228,13 +233,14 @@ def test_get_wordlist_for_size_falls_back_to_bundled():
     with patch.dict(os.environ, {'SECLISTS_PATH': ''}, clear=False):
         with patch('vortex.wordlists._SECLISTS_SEARCH_PATHS', ['/nonexistent']):
             with patch.object(wl_mod, 'get_local_seclists_base', return_value=None):
-                with patch.object(wl_mod, 'get_cached_wordlist_path', return_value=None):
-                    provider = wl_mod.SecListsProvider()
-                    with patch.object(wl_mod, '_provider', provider):
-                        for module in ('subdomains', 'directories', 'parameters'):
-                            path, from_seclists = wl_mod.get_wordlist_for_size(module, 'small')
-                            assert not from_seclists
-                            assert os.path.isfile(path)
+                with patch.object(wl_mod, 'get_local_seclists_archive', return_value=None):
+                    with patch.object(wl_mod, 'get_cached_wordlist_path', return_value=None):
+                        provider = wl_mod.SecListsProvider()
+                        with patch.object(wl_mod, '_provider', provider):
+                            for module in ('subdomains', 'directories', 'parameters'):
+                                path, from_seclists = wl_mod.get_wordlist_for_size(module, 'small')
+                                assert not from_seclists
+                                assert os.path.isfile(path)
 
 
 def test_get_wordlist_for_size_uses_seclists_when_available(tmp_path):
@@ -252,23 +258,24 @@ def test_get_wordlist_for_size_uses_seclists_when_available(tmp_path):
     (sl_dir / 'burp-parameter-names.txt').write_text('id\npage\n')
 
     with patch.object(wl_mod, 'get_local_seclists_base', return_value=None):
-        with patch.dict(os.environ, {'SECLISTS_PATH': str(tmp_path)}):
-            provider = wl_mod.SecListsProvider()
-            assert provider.available
+        with patch.object(wl_mod, 'get_local_seclists_archive', return_value=None):
+            with patch.dict(os.environ, {'SECLISTS_PATH': str(tmp_path)}):
+                provider = wl_mod.SecListsProvider()
+                assert provider.available
 
-            with patch.object(wl_mod, '_provider', provider):
-                with patch.object(wl_mod, 'get_cached_wordlist_path', return_value=None):
-                    path_sub, from_sl = wl_mod.get_wordlist_for_size('subdomains', 'small')
-                    assert from_sl
-                    assert 'subdomains-top1million-5000.txt' in path_sub
+                with patch.object(wl_mod, '_provider', provider):
+                    with patch.object(wl_mod, 'get_cached_wordlist_path', return_value=None):
+                        path_sub, from_sl = wl_mod.get_wordlist_for_size('subdomains', 'small')
+                        assert from_sl
+                        assert 'subdomains-top1million-5000.txt' in path_sub
 
-                    path_dir, from_sl = wl_mod.get_wordlist_for_size('directories', 'small')
-                    assert from_sl
-                    assert 'common.txt' in path_dir
+                        path_dir, from_sl = wl_mod.get_wordlist_for_size('directories', 'small')
+                        assert from_sl
+                        assert 'common.txt' in path_dir
 
-                    path_param, from_sl = wl_mod.get_wordlist_for_size('parameters', 'small')
-                    assert from_sl
-                    assert 'burp-parameter-names.txt' in path_param
+                        path_param, from_sl = wl_mod.get_wordlist_for_size('parameters', 'small')
+                        assert from_sl
+                        assert 'burp-parameter-names.txt' in path_param
 
 
 def test_get_wordlist_for_size_all_sizes(tmp_path):
@@ -297,15 +304,16 @@ def test_get_wordlist_for_size_all_sizes(tmp_path):
         (sl_web / fname).write_text('a\n')
 
     with patch.object(wl_mod, 'get_local_seclists_base', return_value=None):
-        with patch.dict(os.environ, {'SECLISTS_PATH': str(tmp_path)}):
-            provider = wl_mod.SecListsProvider()
-            with patch.object(wl_mod, '_provider', provider):
-                with patch.object(wl_mod, 'get_cached_wordlist_path', return_value=None):
-                    for size in ('small', 'medium', 'large'):
-                        for module in ('subdomains', 'directories', 'parameters'):
-                            path, from_sl = wl_mod.get_wordlist_for_size(module, size)
-                            assert from_sl, f"Expected SecLists for {module}/{size}"
-                            assert os.path.isfile(path)
+        with patch.object(wl_mod, 'get_local_seclists_archive', return_value=None):
+            with patch.dict(os.environ, {'SECLISTS_PATH': str(tmp_path)}):
+                provider = wl_mod.SecListsProvider()
+                with patch.object(wl_mod, '_provider', provider):
+                    with patch.object(wl_mod, 'get_cached_wordlist_path', return_value=None):
+                        for size in ('small', 'medium', 'large'):
+                            for module in ('subdomains', 'directories', 'parameters'):
+                                path, from_sl = wl_mod.get_wordlist_for_size(module, size)
+                                assert from_sl, f"Expected SecLists for {module}/{size}"
+                                assert os.path.isfile(path)
 
 
 def test_seclists_env_var_empty_falls_back_to_search(tmp_path):
@@ -313,11 +321,12 @@ def test_seclists_env_var_empty_falls_back_to_search(tmp_path):
     import vortex.wordlists as wl_mod
 
     with patch.object(wl_mod, 'get_local_seclists_base', return_value=None):
-        with patch.dict(os.environ, {'SECLISTS_PATH': ''}, clear=False):
-            with patch('vortex.wordlists._SECLISTS_SEARCH_PATHS', [str(tmp_path)]):
-                provider = wl_mod.SecListsProvider()
-                assert provider.available
-                assert provider.base_path == str(tmp_path)
+        with patch.object(wl_mod, 'get_local_seclists_archive', return_value=None):
+            with patch.dict(os.environ, {'SECLISTS_PATH': ''}, clear=False):
+                with patch('vortex.wordlists._SECLISTS_SEARCH_PATHS', [str(tmp_path)]):
+                    provider = wl_mod.SecListsProvider()
+                    assert provider.available
+                    assert provider.base_path == str(tmp_path)
 
 
 # ---------------------------------------------------------------------------

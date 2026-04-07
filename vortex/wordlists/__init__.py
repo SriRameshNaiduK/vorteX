@@ -8,6 +8,8 @@ import zipfile
 WORDLIST_DIR = os.path.dirname(os.path.abspath(__file__))
 
 _LOCAL_SECLISTS_DIR = os.path.join(WORDLIST_DIR, 'SecLists')
+_LOCAL_SECLISTS_ARCHIVE = os.path.join(WORDLIST_DIR, 'SecLists-master.zip')
+_LOCAL_SECLISTS_EXTRACTED = os.path.join(WORDLIST_DIR, 'SecLists-needed')
 _SECLISTS_ARCHIVE_URL = 'https://github.com/danielmiessler/SecLists/archive/refs/heads/master.zip'
 
 _LOCAL_SECLISTS_PREFIX = 'seclists_'
@@ -108,6 +110,36 @@ def _download_and_extract_seclists(destination_parent):
     return target_dir
 
 
+def _download_seclists_archive(destination_parent):
+    os.makedirs(destination_parent, exist_ok=True)
+    archive_path = os.path.join(destination_parent, 'SecLists-master.zip')
+    return archive_path if _download_to_path(_SECLISTS_ARCHIVE_URL, archive_path, timeout=30) else None
+
+
+def _extract_from_seclists_archive(archive_path, relative_path):
+    os.makedirs(_LOCAL_SECLISTS_EXTRACTED, exist_ok=True)
+    target_path = os.path.join(_LOCAL_SECLISTS_EXTRACTED, relative_path)
+    if os.path.isfile(target_path):
+        return target_path
+
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    try:
+        with zipfile.ZipFile(archive_path, 'r') as archive:
+            member = None
+            suffix = relative_path.replace('\\', '/').lstrip('/')
+            for name in archive.namelist():
+                if name.endswith('/' + suffix) or name == suffix:
+                    member = name
+                    break
+            if not member:
+                return None
+            with archive.open(member, 'r') as src, open(target_path, 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+    except (OSError, zipfile.BadZipFile, KeyError):
+        return None
+    return target_path if os.path.isfile(target_path) else None
+
+
 def install_full_seclists(destination_parent=None, source_base=None, overwrite=False):
     """Install the full SecLists corpus into ``<destination_parent>/SecLists``.
 
@@ -128,15 +160,25 @@ def install_full_seclists(destination_parent=None, source_base=None, overwrite=F
     if source_base and os.path.isdir(source_base) and source_base != target_dir:
         if os.path.isdir(target_dir):
             shutil.rmtree(target_dir, ignore_errors=True)
-        shutil.copytree(source_base, target_dir)
-        return target_dir
+        try:
+            shutil.copytree(source_base, target_dir)
+            return target_dir
+        except OSError:
+            pass
 
-    return _download_and_extract_seclists(destination_parent)
+    # Keep a full SecLists archive locally; this avoids Defender blocks from
+    # extracting flagged payload files while still shipping the full corpus.
+    return _download_seclists_archive(destination_parent)
 
 
 def get_local_seclists_base():
     """Return the full local SecLists installation path when present."""
     return _LOCAL_SECLISTS_DIR if os.path.isdir(_LOCAL_SECLISTS_DIR) else None
+
+
+def get_local_seclists_archive():
+    """Return local SecLists archive path when present."""
+    return _LOCAL_SECLISTS_ARCHIVE if os.path.isfile(_LOCAL_SECLISTS_ARCHIVE) else None
 
 
 def get_cached_wordlist_path(module, size='small'):
@@ -229,6 +271,7 @@ class SecListsProvider:
 
     def __init__(self):
         self._base = self._detect()
+        self._archive = get_local_seclists_archive()
 
     def _detect(self):
         """Return the SecLists base directory, or None if not found."""
@@ -250,12 +293,12 @@ class SecListsProvider:
     @property
     def available(self):
         """True when a SecLists installation was found."""
-        return self._base is not None
+        return self._base is not None or self._archive is not None
 
     @property
     def base_path(self):
         """The detected SecLists base directory (may be None)."""
-        return self._base
+        return self._base or self._archive
 
     def get_path(self, module, size='small'):
         """Return the absolute path to a SecLists wordlist, or None.
@@ -272,8 +315,13 @@ class SecListsProvider:
         relative = _SECLISTS_FILES.get(module, {}).get(size)
         if not relative:
             return None
-        full = os.path.join(self._base, relative)
-        return full if os.path.isfile(full) else None
+        if self._base:
+            full = os.path.join(self._base, relative)
+            if os.path.isfile(full):
+                return full
+        if self._archive:
+            return _extract_from_seclists_archive(self._archive, relative)
+        return None
 
 
 # Module-level singleton — evaluated once at import time

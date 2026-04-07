@@ -12,6 +12,7 @@ from vortex.wordlists import (
     SecListsProvider,
     _SECLISTS_FILES,
     get_cached_wordlist_path,
+    get_local_seclists_archive,
     get_local_seclists_base,
     get_wordlist_for_size,
 )
@@ -35,6 +36,10 @@ def find_seclists():
     local = get_local_seclists_base()
     if local:
         return local
+
+    archive = get_local_seclists_archive()
+    if archive:
+        return archive
 
     for module, sizes in _SECLISTS_FILES.items():
         for size in sizes:
