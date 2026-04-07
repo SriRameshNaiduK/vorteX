@@ -5,6 +5,14 @@ import urllib.request
 
 WORDLIST_DIR = os.path.dirname(os.path.abspath(__file__))
 
+_USER_CACHE_WORDLIST_DIR = os.path.join(
+    os.environ.get('LOCALAPPDATA') or os.path.expanduser('~/.cache'),
+    'vortex',
+    'wordlists',
+)
+
+_AUTO_DOWNLOAD_ATTEMPTED = False
+
 _LOCAL_SECLISTS_PREFIX = 'seclists_'
 _SECLISTS_RAW_BASE = 'https://raw.githubusercontent.com/danielmiessler/SecLists/master'
 
@@ -76,8 +84,11 @@ def get_cached_wordlist_path(module, size='small'):
     filename = _local_seclists_filename(module, size)
     if not filename:
         return None
-    path = os.path.join(WORDLIST_DIR, filename)
-    return path if os.path.isfile(path) else None
+    for base_dir in (WORDLIST_DIR, _USER_CACHE_WORDLIST_DIR):
+        path = os.path.join(base_dir, filename)
+        if os.path.isfile(path):
+            return path
+    return None
 
 
 def is_cached_wordlist(path):
@@ -85,9 +96,8 @@ def is_cached_wordlist(path):
     if not path:
         return False
     abs_path = os.path.abspath(path)
-    return os.path.dirname(abs_path) == os.path.abspath(WORDLIST_DIR) and os.path.basename(abs_path).startswith(
-        _LOCAL_SECLISTS_PREFIX
-    )
+    cache_dirs = {os.path.abspath(WORDLIST_DIR), os.path.abspath(_USER_CACHE_WORDLIST_DIR)}
+    return os.path.dirname(abs_path) in cache_dirs and os.path.basename(abs_path).startswith(_LOCAL_SECLISTS_PREFIX)
 
 
 def cache_seclists_wordlists(source_base=None, destination_dir=None, overwrite=False, download_missing=False):
@@ -137,8 +147,11 @@ def cache_seclists_wordlists(source_base=None, destination_dir=None, overwrite=F
             if source_base:
                 source = os.path.join(source_base, relative)
                 if os.path.isfile(source):
-                    shutil.copy2(source, destination)
-                    copied = True
+                    try:
+                        shutil.copy2(source, destination)
+                        copied = True
+                    except OSError:
+                        copied = False
             elif download_missing:
                 url = _local_seclists_url(module, size)
                 if url:
@@ -229,6 +242,18 @@ def get_wordlist_for_size(module, size='small'):
     seclists_path = _provider.get_path(module, size)
     if seclists_path:
         return seclists_path, True
+
+    global _AUTO_DOWNLOAD_ATTEMPTED
+    if not _AUTO_DOWNLOAD_ATTEMPTED and os.environ.get('VORTEX_SECLISTS_AUTO_DOWNLOAD', '1') != '0':
+        _AUTO_DOWNLOAD_ATTEMPTED = True
+
+        # Try package path first, then user cache for non-admin installs.
+        cache_seclists_wordlists(destination_dir=WORDLIST_DIR, overwrite=False, download_missing=True)
+        cache_seclists_wordlists(destination_dir=_USER_CACHE_WORDLIST_DIR, overwrite=False, download_missing=True)
+
+        cached_path = get_cached_wordlist_path(module, size)
+        if cached_path:
+            return cached_path, True
 
     bundled = {
         'subdomains': _BUNDLED_SUBDOMAINS,

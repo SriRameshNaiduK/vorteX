@@ -184,6 +184,37 @@ def test_get_wordlist_for_size_prefers_cached_wordlist(tmp_path):
     assert path == str(cached_file)
 
 
+def test_get_wordlist_for_size_attempts_runtime_download(tmp_path):
+    """When no SecLists exists, runtime auto-download should populate user cache."""
+    import vortex.wordlists as wl_mod
+
+    user_cache = tmp_path / 'user-cache'
+    user_cache.mkdir()
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'downloaded\n'
+
+    with patch.dict(os.environ, {'SECLISTS_PATH': ''}, clear=False):
+        with patch('vortex.wordlists._SECLISTS_SEARCH_PATHS', ['/nonexistent']):
+            with patch.object(wl_mod, '_AUTO_DOWNLOAD_ATTEMPTED', False):
+                with patch.object(wl_mod, '_USER_CACHE_WORDLIST_DIR', str(user_cache)):
+                    with patch.object(wl_mod.urllib.request, 'urlopen', return_value=FakeResponse()):
+                        provider = wl_mod.SecListsProvider()
+                        with patch.object(wl_mod, '_provider', provider):
+                            path, from_seclists = wl_mod.get_wordlist_for_size('subdomains', 'small')
+
+    assert from_seclists
+    assert 'seclists_subdomains_small.txt' in path
+    assert os.path.isfile(path)
+
+
 # ---------------------------------------------------------------------------
 # Test: get_wordlist_for_size() — fallback to bundled when SecLists absent
 # ---------------------------------------------------------------------------
@@ -196,10 +227,13 @@ def test_get_wordlist_for_size_falls_back_to_bundled():
         with patch('vortex.wordlists._SECLISTS_SEARCH_PATHS', ['/nonexistent']):
             provider = wl_mod.SecListsProvider()
             with patch.object(wl_mod, '_provider', provider):
-                for module in ('subdomains', 'directories', 'parameters'):
-                    path, from_seclists = wl_mod.get_wordlist_for_size(module, 'small')
-                    assert not from_seclists
-                    assert os.path.isfile(path)
+                with patch.object(wl_mod, '_AUTO_DOWNLOAD_ATTEMPTED', True):
+                    with patch.object(wl_mod, 'WORDLIST_DIR', os.path.dirname(wl_mod._BUNDLED_SUBDOMAINS)):
+                        with patch.object(wl_mod, '_USER_CACHE_WORDLIST_DIR', 'Z:/nonexistent-cache-dir'):
+                            for module in ('subdomains', 'directories', 'parameters'):
+                                path, from_seclists = wl_mod.get_wordlist_for_size(module, 'small')
+                                assert not from_seclists
+                                assert os.path.isfile(path)
 
 
 def test_get_wordlist_for_size_uses_seclists_when_available(tmp_path):
@@ -221,17 +255,19 @@ def test_get_wordlist_for_size_uses_seclists_when_available(tmp_path):
         assert provider.available
 
         with patch.object(wl_mod, '_provider', provider):
-            path_sub, from_sl = wl_mod.get_wordlist_for_size('subdomains', 'small')
-            assert from_sl
-            assert 'subdomains-top1million-5000.txt' in path_sub
+            with patch.object(wl_mod, 'WORDLIST_DIR', 'Z:/nonexistent-cache-dir'):
+                with patch.object(wl_mod, '_USER_CACHE_WORDLIST_DIR', 'Z:/nonexistent-user-cache-dir'):
+                    path_sub, from_sl = wl_mod.get_wordlist_for_size('subdomains', 'small')
+                    assert from_sl
+                    assert 'subdomains-top1million-5000.txt' in path_sub
 
-            path_dir, from_sl = wl_mod.get_wordlist_for_size('directories', 'small')
-            assert from_sl
-            assert 'common.txt' in path_dir
+                    path_dir, from_sl = wl_mod.get_wordlist_for_size('directories', 'small')
+                    assert from_sl
+                    assert 'common.txt' in path_dir
 
-            path_param, from_sl = wl_mod.get_wordlist_for_size('parameters', 'small')
-            assert from_sl
-            assert 'burp-parameter-names.txt' in path_param
+                    path_param, from_sl = wl_mod.get_wordlist_for_size('parameters', 'small')
+                    assert from_sl
+                    assert 'burp-parameter-names.txt' in path_param
 
 
 def test_get_wordlist_for_size_all_sizes(tmp_path):
