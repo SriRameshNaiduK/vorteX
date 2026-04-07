@@ -1,17 +1,14 @@
 import os
 import shutil
+import tempfile
 import urllib.error
 import urllib.request
+import zipfile
 
 WORDLIST_DIR = os.path.dirname(os.path.abspath(__file__))
 
-_USER_CACHE_WORDLIST_DIR = os.path.join(
-    os.environ.get('LOCALAPPDATA') or os.path.expanduser('~/.cache'),
-    'vortex',
-    'wordlists',
-)
-
-_AUTO_DOWNLOAD_ATTEMPTED = False
+_LOCAL_SECLISTS_DIR = os.path.join(WORDLIST_DIR, 'SecLists')
+_SECLISTS_ARCHIVE_URL = 'https://github.com/danielmiessler/SecLists/archive/refs/heads/master.zip'
 
 _LOCAL_SECLISTS_PREFIX = 'seclists_'
 _SECLISTS_RAW_BASE = 'https://raw.githubusercontent.com/danielmiessler/SecLists/master'
@@ -79,12 +76,75 @@ def _download_to_path(url, destination, timeout=10):
     return True
 
 
+def _download_and_extract_seclists(destination_parent):
+    os.makedirs(destination_parent, exist_ok=True)
+    target_dir = os.path.join(destination_parent, 'SecLists')
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        archive_path = os.path.join(temp_dir, 'seclists.zip')
+        if not _download_to_path(_SECLISTS_ARCHIVE_URL, archive_path):
+            return None
+
+        try:
+            with zipfile.ZipFile(archive_path, 'r') as archive:
+                archive.extractall(temp_dir)
+        except (OSError, zipfile.BadZipFile):
+            return None
+
+        extracted_root = None
+        for name in os.listdir(temp_dir):
+            candidate = os.path.join(temp_dir, name)
+            if os.path.isdir(candidate) and name.lower().startswith('seclists-'):
+                extracted_root = candidate
+                break
+
+        if not extracted_root:
+            return None
+
+        if os.path.isdir(target_dir):
+            shutil.rmtree(target_dir, ignore_errors=True)
+        shutil.copytree(extracted_root, target_dir)
+
+    return target_dir
+
+
+def install_full_seclists(destination_parent=None, source_base=None, overwrite=False):
+    """Install the full SecLists corpus into ``<destination_parent>/SecLists``.
+
+    Copies from a local SecLists installation when available; otherwise
+    downloads and extracts the official SecLists archive.
+    """
+    destination_parent = destination_parent or WORDLIST_DIR
+    destination_parent = os.path.abspath(destination_parent)
+    target_dir = os.path.join(destination_parent, 'SecLists')
+
+    if os.path.isdir(target_dir) and not overwrite:
+        return target_dir
+
+    source_base = source_base or _provider.base_path
+    if source_base:
+        source_base = os.path.abspath(source_base)
+
+    if source_base and os.path.isdir(source_base) and source_base != target_dir:
+        if os.path.isdir(target_dir):
+            shutil.rmtree(target_dir, ignore_errors=True)
+        shutil.copytree(source_base, target_dir)
+        return target_dir
+
+    return _download_and_extract_seclists(destination_parent)
+
+
+def get_local_seclists_base():
+    """Return the full local SecLists installation path when present."""
+    return _LOCAL_SECLISTS_DIR if os.path.isdir(_LOCAL_SECLISTS_DIR) else None
+
+
 def get_cached_wordlist_path(module, size='small'):
     """Return a cached SecLists copy stored inside ``WORDLIST_DIR`` if present."""
     filename = _local_seclists_filename(module, size)
     if not filename:
         return None
-    for base_dir in (WORDLIST_DIR, _USER_CACHE_WORDLIST_DIR):
+    for base_dir in (WORDLIST_DIR,):
         path = os.path.join(base_dir, filename)
         if os.path.isfile(path):
             return path
@@ -96,7 +156,7 @@ def is_cached_wordlist(path):
     if not path:
         return False
     abs_path = os.path.abspath(path)
-    cache_dirs = {os.path.abspath(WORDLIST_DIR), os.path.abspath(_USER_CACHE_WORDLIST_DIR)}
+    cache_dirs = {os.path.abspath(WORDLIST_DIR)}
     return os.path.dirname(abs_path) in cache_dirs and os.path.basename(abs_path).startswith(_LOCAL_SECLISTS_PREFIX)
 
 
@@ -172,6 +232,10 @@ class SecListsProvider:
 
     def _detect(self):
         """Return the SecLists base directory, or None if not found."""
+        local = get_local_seclists_base()
+        if local:
+            return local
+
         # Environment variable override takes highest priority
         env_path = os.environ.get('SECLISTS_PATH', '').strip()
         if env_path and os.path.isdir(env_path):
@@ -219,7 +283,8 @@ _provider = SecListsProvider()
 def get_wordlist_for_size(module, size='small'):
     """Return the best wordlist path for *module* at the requested *size*.
 
-    Tries a cached SecLists copy first, then a system SecLists install, then
+    Tries installed local SecLists first, then a cached SecLists copy, then a
+    system SecLists install, then
     falls back to the bundled wordlist when neither is available.
 
     Parameters
@@ -233,8 +298,13 @@ def get_wordlist_for_size(module, size='small'):
     -------
     tuple[str, bool]
         ``(path, from_seclists)`` where *from_seclists* is True when the
-        returned path comes from a cached or system SecLists source.
+        returned path comes from local/cached/system SecLists sources.
     """
+    local_provider = SecListsProvider()
+    local_path = local_provider.get_path(module, size)
+    if local_path:
+        return local_path, True
+
     cached_path = get_cached_wordlist_path(module, size)
     if cached_path:
         return cached_path, True
@@ -243,17 +313,6 @@ def get_wordlist_for_size(module, size='small'):
     if seclists_path:
         return seclists_path, True
 
-    global _AUTO_DOWNLOAD_ATTEMPTED
-    if not _AUTO_DOWNLOAD_ATTEMPTED and os.environ.get('VORTEX_SECLISTS_AUTO_DOWNLOAD', '1') != '0':
-        _AUTO_DOWNLOAD_ATTEMPTED = True
-
-        # Try package path first, then user cache for non-admin installs.
-        cache_seclists_wordlists(destination_dir=WORDLIST_DIR, overwrite=False, download_missing=True)
-        cache_seclists_wordlists(destination_dir=_USER_CACHE_WORDLIST_DIR, overwrite=False, download_missing=True)
-
-        cached_path = get_cached_wordlist_path(module, size)
-        if cached_path:
-            return cached_path, True
 
     bundled = {
         'subdomains': _BUNDLED_SUBDOMAINS,

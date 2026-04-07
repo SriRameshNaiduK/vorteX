@@ -12,6 +12,7 @@ from vortex.wordlists import (
     SecListsProvider,
     _SECLISTS_FILES,
     get_cached_wordlist_path,
+    get_local_seclists_base,
     get_wordlist_for_size,
 )
 
@@ -23,13 +24,18 @@ def find_seclists():
     """Return the cached or installed SecLists base directory path.
 
     Searches (in order):
-    1. A cached copy inside ``vortex/wordlists``.
-    2. The ``SECLISTS_PATH`` environment variable.
-    3. ``/usr/share/seclists/``
-    4. ``/usr/share/SecLists/``
-    5. ``/opt/seclists/``
-    6. ``~/SecLists/``
+    1. Full local install at ``vortex/wordlists/SecLists``.
+    2. A cached copy inside ``vortex/wordlists``.
+    3. The ``SECLISTS_PATH`` environment variable.
+    4. ``/usr/share/seclists/``
+    5. ``/usr/share/SecLists/``
+    6. ``/opt/seclists/``
+    7. ``~/SecLists/``
     """
+    local = get_local_seclists_base()
+    if local:
+        return local
+
     for module, sizes in _SECLISTS_FILES.items():
         for size in sizes:
             cached = get_cached_wordlist_path(module, size)

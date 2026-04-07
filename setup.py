@@ -6,27 +6,17 @@ from setuptools.command.build_py import build_py as _build_py
 
 class build_py(_build_py):
     def run(self):
-        try:
-            from vortex.wordlists import cache_seclists_wordlists
+        from vortex.wordlists import install_full_seclists
 
-            auto_download = os.environ.get('VORTEX_SECLISTS_AUTO_DOWNLOAD', '1') != '0'
-            project_root = os.path.dirname(os.path.abspath(__file__))
-            source_wordlist_dir = os.path.join(project_root, 'vortex', 'wordlists')
-            build_wordlist_dir = os.path.join(self.build_lib, 'vortex', 'wordlists')
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        source_wordlist_dir = os.path.join(project_root, 'vortex', 'wordlists')
+        build_wordlist_dir = os.path.join(self.build_lib, 'vortex', 'wordlists')
 
-            cache_seclists_wordlists(
-                destination_dir=source_wordlist_dir,
-                overwrite=True,
-                download_missing=auto_download,
-            )
-            cache_seclists_wordlists(
-                destination_dir=build_wordlist_dir,
-                overwrite=True,
-                download_missing=auto_download,
-            )
-        except Exception:
-            # Best-effort only: never block installation if SecLists cannot be fetched.
-            pass
+        source_installed = install_full_seclists(destination_parent=source_wordlist_dir, overwrite=True)
+        build_installed = install_full_seclists(destination_parent=build_wordlist_dir, overwrite=True)
+
+        if not source_installed or not build_installed:
+            raise RuntimeError('SecLists installation failed: unable to install full SecLists corpus.')
         super().run()
 
 def main():

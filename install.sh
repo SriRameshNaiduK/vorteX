@@ -31,18 +31,15 @@ print_ok()  { echo "[✔] $*"; }
 print_info(){ echo "[*] $*"; }
 print_warn(){ echo "[!] $*"; }
 
-cache_seclists_wordlists() {
-    print_info "Checking for a local SecLists installation to cache..."
+install_full_seclists() {
+    print_info "Installing full SecLists corpus into vortex/wordlists/SecLists ..."
     python3 - <<'PY'
-from vortex.wordlists import cache_seclists_wordlists
-import os
+from vortex.wordlists import install_full_seclists
 
-auto_download = os.environ.get("VORTEX_SECLISTS_AUTO_DOWNLOAD", "1") != "0"
-cached = cache_seclists_wordlists(overwrite=True, download_missing=auto_download)
-if cached:
-    print(f"[✔] Cached {len(cached)} SecLists wordlists into vortex/wordlists/")
-else:
-    print("[!] No SecLists installation found; keeping the bundled fallback wordlists.")
+installed = install_full_seclists(overwrite=True)
+if not installed:
+    raise SystemExit("[!] Could not install SecLists corpus. Check network access to GitHub or set SECLISTS_PATH.")
+print(f"[✔] SecLists installed at: {installed}")
 PY
 }
 
@@ -69,7 +66,7 @@ fi
 # ── Dev mode ────────────────────────────────────────────────────────
 
 if [ "$MODE" = "--dev" ]; then
-    cache_seclists_wordlists
+    install_full_seclists
     print_info "Dev mode: creating virtual environment at $VENV_DIR/ ..."
     python3 -m venv "$VENV_DIR"
     "$VENV_DIR/bin/pip" install --upgrade pip --quiet
@@ -86,7 +83,7 @@ fi
 # ── Standard install: try pipx first ────────────────────────────────
 
 if command_exists pipx; then
-    cache_seclists_wordlists
+    install_full_seclists
     print_info "pipx detected — using pipx for isolated install..."
     pipx install .
     print_ok "vorteX installed via pipx."
@@ -99,7 +96,7 @@ fi
 # ── Fallback: venv install ───────────────────────────────────────────
 
 print_info "pipx not found — creating virtual environment at $VENV_DIR/ ..."
-cache_seclists_wordlists
+install_full_seclists
 python3 -m venv "$VENV_DIR"
 "$VENV_DIR/bin/pip" install --upgrade pip --quiet
 "$VENV_DIR/bin/pip" install . --quiet
