@@ -104,6 +104,40 @@ def test_cache_seclists_wordlists_copies_available_files(tmp_path):
     assert os.path.isfile(cached['parameters:small'])
 
 
+def test_cache_seclists_wordlists_downloads_when_source_missing(tmp_path):
+    """download_missing=True should populate cached files from upstream URLs."""
+    import vortex.wordlists as wl_mod
+
+    cache_dir = tmp_path / 'cache'
+    cache_dir.mkdir()
+
+    class FakeResponse:
+        def __init__(self, data: bytes):
+            self._data = data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return self._data
+
+    def fake_urlopen(url, timeout=10):
+        assert 'raw.githubusercontent.com/danielmiessler/SecLists/master/' in url
+        return FakeResponse(b'downloaded\n')
+
+    with patch.object(wl_mod, 'WORDLIST_DIR', str(cache_dir)):
+        with patch.object(wl_mod.urllib.request, 'urlopen', side_effect=fake_urlopen):
+            cached = wl_mod.cache_seclists_wordlists(source_base=None, overwrite=True, download_missing=True)
+
+    assert cached['subdomains:small'] == os.path.join(str(cache_dir), 'seclists_subdomains_small.txt')
+    assert os.path.isfile(cached['subdomains:small'])
+    with open(cached['subdomains:small'], 'r', encoding='utf-8') as fh:
+        assert fh.read() == 'downloaded\n'
+
+
 def test_get_wordlist_for_size_prefers_cached_wordlist(tmp_path):
     """A cached SecLists copy should win over a live SecLists install."""
     import vortex.wordlists as wl_mod

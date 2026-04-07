@@ -281,7 +281,9 @@ When a large number of URLs is discovered (500+), vorteX automatically prints an
 
 ### SecLists Integration
 
-vorteX automatically detects [danielmiessler/SecLists](https://github.com/danielmiessler/SecLists) — the industry-standard security wordlist collection — and uses it instead of the bundled wordlists when available. During `install.sh`, any locally installed SecLists files are copied into `vortex/wordlists/` so the tool can keep using them even when the system package is unavailable later. On **Kali Linux** and **Parrot OS**, SecLists is typically pre-installed at `/usr/share/seclists/` and detected with **zero configuration**.
+vorteX automatically detects [danielmiessler/SecLists](https://github.com/danielmiessler/SecLists) — the industry-standard security wordlist collection — and uses it instead of the bundled wordlists when available. During install, vorteX tries to cache the supported SecLists files into `vortex/wordlists/`; it first copies from any local SecLists installation and, if none is found, it makes a best-effort attempt to fetch the same files from the upstream SecLists repository. On **Kali Linux** and **Parrot OS**, SecLists is typically pre-installed at `/usr/share/seclists/` and detected with **zero configuration**.
+
+If you want to disable the automatic upstream download during install, set `VORTEX_SECLISTS_AUTO_DOWNLOAD=0` before running the installer.
 
 #### Installing SecLists
 

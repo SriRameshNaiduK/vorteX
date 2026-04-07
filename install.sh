@@ -35,8 +35,10 @@ cache_seclists_wordlists() {
     print_info "Checking for a local SecLists installation to cache..."
     python3 - <<'PY'
 from vortex.wordlists import cache_seclists_wordlists
+import os
 
-cached = cache_seclists_wordlists(overwrite=True)
+auto_download = os.environ.get("VORTEX_SECLISTS_AUTO_DOWNLOAD", "1") != "0"
+cached = cache_seclists_wordlists(overwrite=True, download_missing=auto_download)
 if cached:
     print(f"[✔] Cached {len(cached)} SecLists wordlists into vortex/wordlists/")
 else:

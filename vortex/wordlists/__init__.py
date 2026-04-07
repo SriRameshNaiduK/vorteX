@@ -1,9 +1,12 @@
 import os
 import shutil
+import urllib.error
+import urllib.request
 
 WORDLIST_DIR = os.path.dirname(os.path.abspath(__file__))
 
 _LOCAL_SECLISTS_PREFIX = 'seclists_'
+_SECLISTS_RAW_BASE = 'https://raw.githubusercontent.com/danielmiessler/SecLists/master'
 
 _BUNDLED_SUBDOMAINS = os.path.join(WORDLIST_DIR, 'subdomains.txt')
 _BUNDLED_DIRECTORIES = os.path.join(WORDLIST_DIR, 'directories.txt')
@@ -46,6 +49,28 @@ def _local_seclists_filename(module, size):
     return f"{_LOCAL_SECLISTS_PREFIX}{module}_{size}.txt"
 
 
+def _local_seclists_url(module, size):
+    relative = _SECLISTS_FILES.get(module, {}).get(size)
+    if not relative:
+        return None
+    return f"{_SECLISTS_RAW_BASE}/{relative}"
+
+
+def _download_to_path(url, destination, timeout=10):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            content = response.read()
+    except (OSError, urllib.error.URLError, ValueError):
+        return False
+
+    if not content:
+        return False
+
+    with open(destination, 'wb') as handle:
+        handle.write(content)
+    return True
+
+
 def get_cached_wordlist_path(module, size='small'):
     """Return a cached SecLists copy stored inside ``WORDLIST_DIR`` if present."""
     filename = _local_seclists_filename(module, size)
@@ -65,7 +90,7 @@ def is_cached_wordlist(path):
     )
 
 
-def cache_seclists_wordlists(source_base=None, overwrite=False):
+def cache_seclists_wordlists(source_base=None, overwrite=False, download_missing=False):
     """Copy available SecLists wordlists into ``WORDLIST_DIR``.
 
     Parameters
@@ -75,6 +100,9 @@ def cache_seclists_wordlists(source_base=None, overwrite=False):
         system installation is used.
     overwrite : bool
         Replace already-cached files when True.
+    download_missing : bool
+        Fetch missing files from the upstream SecLists repository when no local
+        installation is available.
 
     Returns
     -------
@@ -84,22 +112,35 @@ def cache_seclists_wordlists(source_base=None, overwrite=False):
     """
     source_base = source_base or _provider.base_path
     if not source_base or not os.path.isdir(source_base):
-        return {}
+        if not download_missing:
+            return {}
+        source_base = None
 
     cached = {}
     for module, sizes in _SECLISTS_FILES.items():
         for size, relative in sizes.items():
-            source = os.path.join(source_base, relative)
-            if not os.path.isfile(source):
-                continue
-
             filename = _local_seclists_filename(module, size)
             if not filename:
                 continue
 
             destination = os.path.join(WORDLIST_DIR, filename)
-            if overwrite or not os.path.isfile(destination):
-                shutil.copy2(source, destination)
+            if not overwrite and os.path.isfile(destination):
+                cached[f'{module}:{size}'] = destination
+                continue
+
+            copied = False
+            if source_base:
+                source = os.path.join(source_base, relative)
+                if os.path.isfile(source):
+                    shutil.copy2(source, destination)
+                    copied = True
+            elif download_missing:
+                url = _local_seclists_url(module, size)
+                if url:
+                    copied = _download_to_path(url, destination)
+
+            if not copied and not os.path.isfile(destination):
+                continue
             cached[f'{module}:{size}'] = destination
 
     return cached
